@@ -1,5 +1,7 @@
 #!/bin/bash
 
+
+#Сначала проверяем сертификат для ноды
 # Путь к файлу cert.pem
 CERT_PATH="/var/lib/marzban-node/cert.pem"
 
@@ -33,8 +35,6 @@ else
     echo "Содержимое записано в cert.pem."
 fi
 
-
-
 # Продолжение выполнения оставшейся части скрипта
 LATEST_VERSION=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r .tag_name) \
 && echo "Последняя версия ${LATEST_VERSION}. Скачиваю ее." \
@@ -46,7 +46,7 @@ LATEST_VERSION=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/la
 && echo "Удаляю архив." \
 && rm Xray-linux-64.zip
 
-# Удаляем контейнер, если он существует
+# Удаляем контейнер, если он до этого существовал 
 if [ "$(docker ps -aq -f name=marzban-node)" ]; then
     echo "Останавливаю докер"
     docker stop marzban-node
