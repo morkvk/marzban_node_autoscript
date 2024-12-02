@@ -130,8 +130,10 @@ fi
 # Путь к файлу конфигурации
 CONF_FILE="/etc/nginx/stream-enabled/proxy.conf"
 
-# Строки, которые нужно добавить
-cat <<EOL >> $CONF_FILE
+# Проверяем, пуст ли файл
+if [ ! -s "$CONF_FILE" ]; then
+    # Файл пустой, добавляем строки
+    cat <<EOL >> "$CONF_FILE"
 map \$ssl_preread_server_name \$sni_name {
     # hostnames;
     savesafe.cc      xray;
@@ -147,6 +149,9 @@ server {
     ssl_preread     on;
 }
 EOL
+else
+    echo "Файл $CONF_FILE уже заполнен. Пропускаем добавление строк."
+fi
 
 # Проверка синтаксиса конфигурации Nginx
 nginx -t
