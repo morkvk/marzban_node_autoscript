@@ -110,7 +110,6 @@ else
     echo "Файл конфигурации $NGINX_CONF не найден."
 fi
 
-
 # Путь к директории и файлу
 STREAM_ENABLED_DIR="/etc/nginx/stream-enabled"
 PROXY_CONF_FILE="$STREAM_ENABLED_DIR/proxy.conf"
