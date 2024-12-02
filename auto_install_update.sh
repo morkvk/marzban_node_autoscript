@@ -1,5 +1,6 @@
 #!/bin/bash
 
+apt-get install curl sudo docker docker-compose unzip nginx-full
 
 #Сначала проверяем сертификат для ноды
 # Путь к файлу cert.pem
@@ -68,3 +69,91 @@ docker run -d \
   -v /var/lib/marzban:/var/lib/marzban \
   -v /var/lib/marzban-node:/var/lib/marzban-node \
   gozargah/marzban-node:latest
+
+
+
+#################
+
+# выключаем двусторонний пинг 
+if ! grep -Fxq "net.ipv4.icmp_echo_ignore_broadcasts=1" /etc/sysctl.conf; then
+    echo "net.ipv4.icmp_echo_ignore_broadcasts=1" >> /etc/sysctl.conf
+fi
+
+if ! grep -Fxq "net.ipv4.icmp_echo_ignore_all=1" /etc/sysctl.conf; then
+    echo "net.ipv4.icmp_echo_ignore_all=1" >> /etc/sysctl.conf
+fi
+
+# Применяем изменения
+sysctl -p
+#############
+
+
+#nginx
+
+# Путь к файлу конфигурации Nginx
+NGINX_CONF="/etc/nginx/nginx.conf"
+
+# Проверка, существует ли файл конфигурации
+if [ -f "$NGINX_CONF" ]; then
+    # Добавление блока в конец файла
+    echo ""
+    echo ""
+    echo "stream {" >> "$NGINX_CONF"
+    echo "    include /etc/nginx/stream-enabled/*.conf;" >> "$NGINX_CONF"
+    echo "}" >> "$NGINX_CONF"
+    echo "Блок добавлен в $NGINX_CONF."
+else
+    echo "Файл конфигурации $NGINX_CONF не найден."
+fi
+
+# Путь к директории и файлу
+STREAM_ENABLED_DIR="/etc/nginx/stream-enabled"
+PROXY_CONF_FILE="$STREAM_ENABLED_DIR/proxy.conf"
+
+# Создание директории stream-enabled, если она не существует
+if [ ! -d "$STREAM_ENABLED_DIR" ]; then
+    mkdir "$STREAM_ENABLED_DIR"
+    echo "Директория $STREAM_ENABLED_DIR создана."
+else
+    echo "Директория $STREAM_ENABLED_DIR уже существует."
+fi
+
+# Создание файла proxy.conf в директории stream-enabled
+if [ ! -f "$PROXY_CONF_FILE" ]; then
+    touch "$PROXY_CONF_FILE"
+    echo "Файл $PROXY_CONF_FILE создан."
+else
+    echo "Файл $PROXY_CONF_FILE уже существует."
+fi
+
+
+# Путь к файлу конфигурации
+CONF_FILE="/etc/nginx/stream-enabled/proxy.conf"
+
+# Строки, которые нужно добавить
+cat <<EOL >> $CONF_FILE
+map \$ssl_preread_server_name \$sni_name {
+    # hostnames;
+    savesafe.cc      xray;
+}
+
+upstream xray {
+    server 127.0.0.1:7891;
+}
+
+server {
+    listen          443;
+    proxy_pass      \$sni_name;
+    ssl_preread     on;
+}
+EOL
+
+# Проверка синтаксиса конфигурации Nginx
+nginx -t
+
+# Если проверка прошла успешно, перезагрузка Nginx
+if [ $? -eq 0 ]; then
+    systemctl reload nginx
+else
+    echo "Ошибка в конфигурации Nginx. Изменения не применены."
+fi
