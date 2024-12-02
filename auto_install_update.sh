@@ -145,6 +145,7 @@ map \$ssl_preread_server_name \$sni_name {
 
 upstream xray {
     server 127.0.0.1:7891;
+    server 127.0.0.1:7892;
 }
 
 server {
