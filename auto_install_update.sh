@@ -1,6 +1,6 @@
 #!/bin/bash
 
-apt-get install -y curl sudo docker docker-compose unzip nginx-full
+apt-get install -y curl sudo docker docker-compose unzip nginx-full jq
 
 #Сначала проверяем сертификат для ноды
 # Путь к файлу cert.pem
