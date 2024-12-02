@@ -95,16 +95,21 @@ NGINX_CONF="/etc/nginx/nginx.conf"
 
 # Проверка, существует ли файл конфигурации
 if [ -f "$NGINX_CONF" ]; then
-    # Добавление блока в конец файла
-    echo ""
-    echo ""
-    echo "stream {" >> "$NGINX_CONF"
-    echo "    include /etc/nginx/stream-enabled/*.conf;" >> "$NGINX_CONF"
-    echo "}" >> "$NGINX_CONF"
-    echo "Блок добавлен в $NGINX_CONF."
+    # Проверка, существует ли блок stream в файле конфигурации
+    if ! grep -q "stream {" "$NGINX_CONF"; then
+        # Добавление блока в конец файла
+        echo "" >> "$NGINX_CONF"
+        echo "stream {" >> "$NGINX_CONF"
+        echo "    include /etc/nginx/stream-enabled/*.conf;" >> "$NGINX_CONF"
+        echo "}" >> "$NGINX_CONF"
+        echo "Блок добавлен в $NGINX_CONF."
+    else
+        echo "Блок stream уже существует в $NGINX_CONF."
+    fi
 else
     echo "Файл конфигурации $NGINX_CONF не найден."
 fi
+
 
 # Путь к директории и файлу
 STREAM_ENABLED_DIR="/etc/nginx/stream-enabled"
