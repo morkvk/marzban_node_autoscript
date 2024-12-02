@@ -1,6 +1,148 @@
 #!/bin/bash
 
-apt-get install -y curl sudo docker docker-compose unzip nginx-full jq
+# Обновление и установка необходимых пакетов
+# Обновление списка пакетов
+	apt-get update -y
+# Обновление установленных пакетов
+	apt-get upgrade -y
+# Установка необходимых пакетов
+	apt-get install -y curl socat git nginx-full sudo vnstat jq unzip docker docker-compose
+
+##########################################
+## UFW
+##########################################
+apt install ufw
+ufw allow 22/tcp
+ufw allow 443/tcp
+ufw allow 443/udp
+ufw allow from 77.238.251.177 to any port 62050
+ufw allow from 77.238.251.177 to any port 62051
+ufw allow from 46.146.230.92 to any port 10077
+ufw default deny incoming
+ufw default allow outgoing
+
+# Путь к файлу
+FILE="/etc/ufw/before.rules"
+
+# Закомментируем соответствующие строки
+sed -i.bak '/-A ufw-before-input -p icmp --icmp-type destination-unreachable -j ACCEPT/ s/^/#/' "$FILE"
+sed -i.bak '/-A ufw-before-input -p icmp --icmp-type time-exceeded -j ACCEPT/ s/^/#/' "$FILE"
+sed -i.bak '/-A ufw-before-input -p icmp --icmp-type parameter-problem -j ACCEPT/ s/^/#/' "$FILE"
+sed -i.bak '/-A ufw-before-input -p icmp --icmp-type echo-request -j ACCEPT/ s/^/#/' "$FILE"
+sed -i.bak '/-A ufw-before-forward -p icmp --icmp-type destination-unreachable -j ACCEPT/ s/^/#/' "$FILE"
+sed -i.bak '/-A ufw-before-forward -p icmp --icmp-type time-exceeded -j ACCEPT/ s/^/#/' "$FILE"
+sed -i.bak '/-A ufw-before-forward -p icmp --icmp-type parameter-problem -j ACCEPT/ s/^/#/' "$FILE"
+sed -i.bak '/-A ufw-before-forward -p icmp --icmp-type echo-request -j ACCEPT/ s/^/#/' "$FILE"
+
+
+#################
+
+# выключаем двусторонний пинг 
+if ! grep -Fxq "net.ipv4.icmp_echo_ignore_broadcasts=1" /etc/sysctl.conf; then
+    echo "net.ipv4.icmp_echo_ignore_broadcasts=1" >> /etc/sysctl.conf
+fi
+
+if ! grep -Fxq "net.ipv4.icmp_echo_ignore_all=1" /etc/sysctl.conf; then
+    echo "net.ipv4.icmp_echo_ignore_all=1" >> /etc/sysctl.conf
+fi
+
+# Применяем изменения
+sysctl -p
+#############
+
+# Перезагрузите UFW
+ufw enable
+systemctl enable ufw
+
+
+
+
+
+
+##########################################
+#nginx
+##########################################
+# Путь к файлу конфигурации Nginx
+NGINX_CONF="/etc/nginx/nginx.conf"
+
+# Проверка, существует ли файл конфигурации
+if [ -f "$NGINX_CONF" ]; then
+    # Добавление блока в конец файла
+    echo ""
+    echo ""
+    echo "stream {" >> "$NGINX_CONF"
+    echo "    include /etc/nginx/stream-enabled/*.conf;" >> "$NGINX_CONF"
+    echo "}" >> "$NGINX_CONF"
+    echo "Блок добавлен в $NGINX_CONF."
+else
+    echo "Файл конфигурации $NGINX_CONF не найден."
+fi
+
+# Путь к директории и файлу
+STREAM_ENABLED_DIR="/etc/nginx/stream-enabled"
+PROXY_CONF_FILE="$STREAM_ENABLED_DIR/proxy.conf"
+
+# Создание директории stream-enabled, если она не существует
+if [ ! -d "$STREAM_ENABLED_DIR" ]; then
+    mkdir "$STREAM_ENABLED_DIR"
+    echo "Директория $STREAM_ENABLED_DIR создана."
+else
+    echo "Директория $STREAM_ENABLED_DIR уже существует."
+fi
+
+# Создание файла proxy.conf в директории stream-enabled
+if [ ! -f "$PROXY_CONF_FILE" ]; then
+    touch "$PROXY_CONF_FILE"
+    echo "Файл $PROXY_CONF_FILE создан."
+else
+    echo "Файл $PROXY_CONF_FILE уже существует."
+fi
+
+
+# Путь к файлу конфигурации
+CONF_FILE="/etc/nginx/stream-enabled/proxy.conf"
+
+# Строки, которые нужно добавить
+cat <<EOL >> $CONF_FILE
+map \$ssl_preread_server_name \$sni_name {
+    # hostnames;
+    savesafe.cc      xray;
+}
+
+upstream xray {
+    server 127.0.0.1:7891;
+}
+
+server {
+    listen          443;
+    proxy_pass      \$sni_name;
+    ssl_preread     on;
+}
+EOL
+
+# Проверка синтаксиса конфигурации Nginx
+nginx -t
+
+# Если проверка прошла успешно, перезагрузка Nginx
+if [ $? -eq 0 ]; then
+    systemctl reload nginx
+else
+    echo "Ошибка в конфигурации Nginx. Изменения не применены."
+fi
+
+# Включение автозагрузки для Nginx
+systemctl enable nginx
+#######################################################################
+
+
+
+
+
+
+
+
+
+
 
 #Сначала проверяем сертификат для ноды
 # Путь к файлу cert.pem
@@ -57,6 +199,7 @@ fi
 
 echo "Делаю docker run с нуля"
 
+################################## MARZBAN NODE ##################################
 docker run -d \
   --name marzban-node \
   --restart always \
@@ -70,100 +213,18 @@ docker run -d \
   -v /var/lib/marzban-node:/var/lib/marzban-node \
   gozargah/marzban-node:latest
 
-
-
-#################
-
-# выключаем двусторонний пинг 
-if ! grep -Fxq "net.ipv4.icmp_echo_ignore_broadcasts=1" /etc/sysctl.conf; then
-    echo "net.ipv4.icmp_echo_ignore_broadcasts=1" >> /etc/sysctl.conf
-fi
-
-if ! grep -Fxq "net.ipv4.icmp_echo_ignore_all=1" /etc/sysctl.conf; then
-    echo "net.ipv4.icmp_echo_ignore_all=1" >> /etc/sysctl.conf
-fi
-
-# Применяем изменения
-sysctl -p
-#############
-
-
-#nginx
-
-# Путь к файлу конфигурации Nginx
-NGINX_CONF="/etc/nginx/nginx.conf"
-
-# Проверка, существует ли файл конфигурации
-if [ -f "$NGINX_CONF" ]; then
-    # Проверка, существует ли блок stream в файле конфигурации
-    if ! grep -q "stream {" "$NGINX_CONF"; then
-        # Добавление блока в конец файла
-        echo "" >> "$NGINX_CONF"
-        echo "stream {" >> "$NGINX_CONF"
-        echo "    include /etc/nginx/stream-enabled/*.conf;" >> "$NGINX_CONF"
-        echo "}" >> "$NGINX_CONF"
-        echo "Блок добавлен в $NGINX_CONF."
-    else
-        echo "Блок stream уже существует в $NGINX_CONF."
-    fi
-else
-    echo "Файл конфигурации $NGINX_CONF не найден."
-fi
-
-# Путь к директории и файлу
-STREAM_ENABLED_DIR="/etc/nginx/stream-enabled"
-PROXY_CONF_FILE="$STREAM_ENABLED_DIR/proxy.conf"
-
-# Создание директории stream-enabled, если она не существует
-if [ ! -d "$STREAM_ENABLED_DIR" ]; then
-    mkdir "$STREAM_ENABLED_DIR"
-    echo "Директория $STREAM_ENABLED_DIR создана."
-else
-    echo "Директория $STREAM_ENABLED_DIR уже существует."
-fi
-
-# Создание файла proxy.conf в директории stream-enabled
-if [ ! -f "$PROXY_CONF_FILE" ]; then
-    touch "$PROXY_CONF_FILE"
-    echo "Файл $PROXY_CONF_FILE создан."
-else
-    echo "Файл $PROXY_CONF_FILE уже существует."
-fi
-
-
-# Путь к файлу конфигурации
-CONF_FILE="/etc/nginx/stream-enabled/proxy.conf"
-
-# Проверяем, пуст ли файл
-if [ ! -s "$CONF_FILE" ]; then
-    # Файл пустой, добавляем строки
-    cat <<EOL >> "$CONF_FILE"
-map \$ssl_preread_server_name \$sni_name {
-    # hostnames;
-    savesafe.cc      xray;
-}
-
-upstream xray {
-    server 127.0.0.1:7891;
-    server 127.0.0.1:7892;
-}
-
-server {
-    listen          443;
-    proxy_pass      \$sni_name;
-    ssl_preread     on;
-}
-EOL
-else
-    echo "Файл $CONF_FILE уже заполнен. Пропускаем добавление строк."
-fi
-
-# Проверка синтаксиса конфигурации Nginx
-nginx -t
-
-# Если проверка прошла успешно, перезагрузка Nginx
-if [ $? -eq 0 ]; then
-    systemctl reload nginx
-else
-    echo "Ошибка в конфигурации Nginx. Изменения не применены."
-fi
+################################## WARP ##################################
+docker run --privileged -d \
+  --name warp \
+  --restart always \
+  -p 40000:1080 \
+  -e WARP_SLEEP=2 \
+  -e BETA_FIX_HOST_CONNECTIVITY=1 \
+  --cap-add MKNOD \
+  --cap-add AUDIT_WRITE \
+  --cap-add NET_ADMIN \
+  --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+  --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+  --restart unless-stopped \
+  -v /data:/var/lib/cloudflare-warp \
+  caomingjun/warp
